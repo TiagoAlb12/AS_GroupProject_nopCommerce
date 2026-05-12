@@ -1606,6 +1606,17 @@ public partial class OrderProcessingService : IOrderProcessingService
                     //raise event       
                     await _eventPublisher.PublishAsync(new OrderPlacedEvent(order));
 
+                    //publish integration event for external consumers (non-blocking)
+                    try
+                    {
+                        await _eventPublisher.PublishAsync(new OrderCreatedEvent(order));
+                    }
+                    catch
+                    {
+                        //never fail the checkout flow if integration publishing fails
+                        await _logger.WarningAsync("Failed to publish OrderCreatedEvent (integration)");
+                    }
+
                     //check order status
                     await CheckOrderStatusAsync(order);
 
