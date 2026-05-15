@@ -1,0 +1,94 @@
+{
+  "rabbit_version": "3.13.0",
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "name": "nopcommerce",
+      "password_hash": "6POROqx54DlWKxNpVBdaMRr8h5P1ylT34X9YR2p+jGPSZfmz",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "nopcommerce",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "nopcommerce.order.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "nopcommerce.order.events.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "nopcommerce.order.created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "nopcommerce.order.events.dlx",
+        "x-dead-letter-routing-key": "nopcommerce.order.created.dlq"
+      }
+    },
+    {
+      "name": "nopcommerce.order.created.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "nopcommerce.order.events",
+      "vhost": "/",
+      "destination": "nopcommerce.order.created",
+      "destination_type": "queue",
+      "routing_key": "order.created",
+      "arguments": {}
+    },
+    {
+      "source": "nopcommerce.order.events.dlx",
+      "vhost": "/",
+      "destination": "nopcommerce.order.created.dlq",
+      "destination_type": "queue",
+      "routing_key": "nopcommerce.order.created.dlq",
+      "arguments": {}
+    }
+  ],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "nopcommerce-order-created-dlq-policy",
+      "pattern": "^nopcommerce\\.order\\.created$",
+      "apply-to": "queues",
+      "definition": {
+        "dead-letter-exchange": "nopcommerce.order.events.dlx"
+      },
+      "priority": 0
+    }
+  ]
+}
