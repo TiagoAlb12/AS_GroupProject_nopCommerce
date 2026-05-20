@@ -89,6 +89,7 @@ public partial class OrderProcessingService : IOrderProcessingService
     protected readonly RewardPointsSettings _rewardPointsSettings;
     protected readonly ShippingSettings _shippingSettings;
     protected readonly TaxSettings _taxSettings;
+    protected readonly OrderCreatedRabbitMqPublisher _orderCreatedRabbitMqPublisher;
 
     #endregion
 
@@ -141,7 +142,8 @@ public partial class OrderProcessingService : IOrderProcessingService
         PaymentSettings paymentSettings,
         RewardPointsSettings rewardPointsSettings,
         ShippingSettings shippingSettings,
-        TaxSettings taxSettings)
+        TaxSettings taxSettings,
+        OrderCreatedRabbitMqPublisher orderCreatedRabbitMqPublisher)
     {
         _currencySettings = currencySettings;
         _addressService = addressService;
@@ -191,6 +193,7 @@ public partial class OrderProcessingService : IOrderProcessingService
         _rewardPointsSettings = rewardPointsSettings;
         _shippingSettings = shippingSettings;
         _taxSettings = taxSettings;
+        _orderCreatedRabbitMqPublisher = orderCreatedRabbitMqPublisher;
     }
 
     #endregion
@@ -1487,7 +1490,7 @@ public partial class OrderProcessingService : IOrderProcessingService
                 //shipping is not required
                 completed = true;
             else
-                //shipping is required
+            //shipping is required
             {
                 completed = _orderSettings.CompleteOrderWhenDelivered
                     ? order.ShippingStatus == ShippingStatus.Delivered
@@ -1609,12 +1612,15 @@ public partial class OrderProcessingService : IOrderProcessingService
                     //publish integration event for external consumers (non-blocking)
                     try
                     {
-                        await _eventPublisher.PublishAsync(new OrderCreatedEvent(order));
+                        // Console.WriteLine("DEBUG AS PROJECT: About to publish OrderCreatedEvent to RabbitMQ");
+                        await _logger.WarningAsync("DEBUG AS PROJECT: About to publish OrderCreatedEvent to RabbitMQ");
+
+                        await _orderCreatedRabbitMqPublisher.PublishAsync(new OrderCreatedEvent(order));
                     }
-                    catch
+                    catch (Exception exception)
                     {
-                        //never fail the checkout flow if integration publishing fails
-                        await _logger.WarningAsync("Failed to publish OrderCreatedEvent (integration)");
+                        // Console.WriteLine($"DEBUG AS PROJECT: exception while publishing to RabbitMQ: {exception}");
+                        await _logger.WarningAsync($"Failed to publish OrderCreatedEvent to RabbitMQ: {exception}");
                     }
 
                     //check order status

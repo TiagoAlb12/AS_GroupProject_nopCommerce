@@ -1,0 +1,20 @@
+# .NET build artifacts
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+
+# Visual Studio / VS Code / Rider
+.vs/
+.vscode/
+.idea/
+
+# User/local files
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log

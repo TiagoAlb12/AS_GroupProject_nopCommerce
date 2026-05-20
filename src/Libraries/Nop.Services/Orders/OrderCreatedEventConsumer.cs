@@ -2,27 +2,26 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Nop.Core.Domain.Orders;
-using Nop.Services.Events;
 using Nop.Services.Logging;
 using RabbitMQ.Client;
 
 namespace Nop.Services.Orders;
 
 /// <summary>
-/// Bridges the nopCommerce order-created integration event to RabbitMQ.
+/// Publishes nopCommerce order-created integration events to RabbitMQ.
 /// </summary>
-public class OrderCreatedEventConsumer : IConsumer<OrderCreatedEvent>
+public class OrderCreatedRabbitMqPublisher
 {
     protected readonly IConfiguration _configuration;
     protected readonly ILogger _logger;
 
-    public OrderCreatedEventConsumer(IConfiguration configuration, ILogger logger)
+    public OrderCreatedRabbitMqPublisher(IConfiguration configuration, ILogger logger)
     {
         _configuration = configuration;
         _logger = logger;
     }
 
-    public async Task HandleEventAsync(OrderCreatedEvent eventMessage)
+    public async Task PublishAsync(OrderCreatedEvent eventMessage)
     {
         if (eventMessage is null)
             return;
@@ -45,13 +44,20 @@ public class OrderCreatedEventConsumer : IConsumer<OrderCreatedEvent>
                 Port = int.TryParse(_configuration["RabbitMQ:Port"], out var port) ? port : 5672,
                 VirtualHost = _configuration["RabbitMQ:VirtualHost"] ?? "/",
                 UserName = _configuration["RabbitMQ:UserName"] ?? "guest",
-                Password = _configuration["RabbitMQ:Password"] ?? "guest"
+                Password = _configuration["RabbitMQ:Password"] ?? "guest",
+                RequestedConnectionTimeout = TimeSpan.FromSeconds(5),
+                SocketReadTimeout = TimeSpan.FromSeconds(5),
+                SocketWriteTimeout = TimeSpan.FromSeconds(5),
+                AutomaticRecoveryEnabled = false
             };
 
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
 
+            channel.ConfirmSelect();
+
             var body = Encoding.UTF8.GetBytes(payload);
+
             var properties = channel.CreateBasicProperties();
             properties.ContentType = "application/json";
             properties.DeliveryMode = 2;
@@ -61,10 +67,14 @@ public class OrderCreatedEventConsumer : IConsumer<OrderCreatedEvent>
             channel.BasicPublish(
                 exchange: "nopcommerce.order.events",
                 routingKey: "order.created",
+                mandatory: true,
                 basicProperties: properties,
                 body: body);
 
-            await Task.CompletedTask;
+            if (!channel.WaitForConfirms(TimeSpan.FromSeconds(5)))
+                throw new Exception("RabbitMQ did not confirm message publish");
+
+            await _logger.InformationAsync("OrderCreatedEvent published to RabbitMQ");
         }
         catch (Exception exception)
         {

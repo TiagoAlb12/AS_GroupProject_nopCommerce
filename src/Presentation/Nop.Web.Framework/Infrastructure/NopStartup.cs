@@ -196,6 +196,11 @@ public partial class NopStartup : INopStartup
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IOrderReportService, OrderReportService>();
         services.AddScoped<IOrderProcessingService, OrderProcessingService>();
+        
+        // RabbitMQ
+        services.AddScoped<IOrderProcessingService, OrderProcessingService>();
+        services.AddScoped<OrderCreatedRabbitMqPublisher>();
+
         services.AddScoped<IOrderTotalCalculationService, OrderTotalCalculationService>();
         services.AddScoped<IReturnRequestService, ReturnRequestService>();
         services.AddScoped<IRewardPointService, RewardPointService>();

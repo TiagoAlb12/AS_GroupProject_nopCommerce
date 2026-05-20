@@ -78,17 +78,5 @@
       "routing_key": "nopcommerce.order.created.dlq",
       "arguments": {}
     }
-  ],
-  "policies": [
-    {
-      "vhost": "/",
-      "name": "nopcommerce-order-created-dlq-policy",
-      "pattern": "^nopcommerce\\.order\\.created$",
-      "apply-to": "queues",
-      "definition": {
-        "dead-letter-exchange": "nopcommerce.order.events.dlx"
-      },
-      "priority": 0
-    }
   ]
 }
