@@ -13,7 +13,6 @@ public partial class OrderCreatedEvent
     /// <param name="order">The order</param>
     public OrderCreatedEvent(Order order)
     {
-        // Order = order;
         EventId = Guid.NewGuid();
         EventType = "OrderCreated";
         OrderId = order.Id;
@@ -51,10 +50,4 @@ public partial class OrderCreatedEvent
     /// Order total
     /// </summary>
     public decimal Total { get; }
-
-    /// <summary>
-    /// Original order object (optional)
-    /// </summary>
-    
-    // public Order Order { get; }
 }
