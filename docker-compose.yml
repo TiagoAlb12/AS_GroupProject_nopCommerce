@@ -94,6 +94,21 @@ services:
       - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
 
+  order_integration_service:
+    build:
+      context: ./src/ExternalServices/OrderIntegrationService
+    container_name: order_integration_service
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    environment:
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__VirtualHost: /
+      RabbitMQ__UserName: nopcommerce
+      RabbitMQ__Password: nopCommerce_rabbit_password
+      RabbitMQ__QueueName: nopcommerce.order.created
+
 volumes:
   nopcommerce_data:
   nopcommerce_db_data:
