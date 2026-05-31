@@ -6,8 +6,12 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - nopcommerce_database
-      - telemetry_service
+      nopcommerce_database:
+        condition: service_started
+      telemetry_service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - nopcommerce_data:/app/App_Data
     environment:
@@ -93,6 +97,12 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   order_integration_service:
     build:
@@ -100,7 +110,8 @@ services:
     container_name: order_integration_service
     restart: unless-stopped
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     environment:
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Port: 5672

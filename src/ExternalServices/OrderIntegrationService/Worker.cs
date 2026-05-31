@@ -1,4 +1,7 @@
 using System.Text;
+using System.Text.Json;
+using OrderIntegrationService.Models;
+using OrderIntegrationService.Services;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -8,14 +11,22 @@ public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly IConfiguration _configuration;
+    private readonly MockStockService _stockService;
+    private readonly MockShippingService _shippingService;
 
     private IConnection? _connection;
     private IModel? _channel;
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(
+        ILogger<Worker> logger,
+        IConfiguration configuration,
+        MockStockService stockService,
+        MockShippingService shippingService)
     {
         _logger = logger;
         _configuration = configuration;
+        _stockService = stockService;
+        _shippingService = shippingService;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,7 +49,7 @@ public class Worker : BackgroundService
 
         var consumer = new EventingBasicConsumer(_channel);
 
-        consumer.Received += (_, ea) =>
+        consumer.Received += async (_, ea) =>
         {
             var body = ea.Body.ToArray();
             var payload = Encoding.UTF8.GetString(body);
@@ -47,9 +58,21 @@ public class Worker : BackgroundService
             {
                 _logger.LogInformation("Received OrderCreated event: {Payload}", payload);
 
+                var order = JsonSerializer.Deserialize<OrderCreatedMessage>(
+                    payload,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (order is null)
+                    throw new Exception("Invalid OrderCreated payload");
+
+                await _stockService.ReserveStockAsync(order);
+                await _shippingService.CreateShipmentAsync(order);
+
                 _channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
 
-                _logger.LogInformation("OrderCreated event acknowledged.");
+                _logger.LogInformation(
+                    "OrderCreated event processed and acknowledged. OrderId={OrderId}",
+                    order.OrderId);
             }
             catch (Exception exception)
             {
