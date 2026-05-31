@@ -11,12 +11,17 @@ public class MockShippingService
         _logger = logger;
     }
 
-    public async Task CreateShipmentAsync(OrderCreatedMessage order)
+    public async Task<string> CreateShipmentAsync(OrderCreatedMessage order)
     {
         await Task.Delay(300);
 
+        var trackingCode = $"TRK-{order.OrderId}-{Guid.NewGuid().ToString()[..8].ToUpper()}";
+
         _logger.LogInformation(
-            "Shipping mock: shipment created for order {OrderId}",
-            order.OrderId);
+            "Shipping mock: shipment created for order {OrderId}, tracking {TrackingCode}",
+            order.OrderId,
+            trackingCode);
+
+        return trackingCode;
     }
 }

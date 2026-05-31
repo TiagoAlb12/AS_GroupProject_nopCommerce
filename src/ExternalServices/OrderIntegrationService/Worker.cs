@@ -14,6 +14,8 @@ public class Worker : BackgroundService
     private readonly MockStockService _stockService;
     private readonly MockShippingService _shippingService;
 
+    private readonly OrderIntegrationStateStore _stateStore;
+
     private IConnection? _connection;
     private IModel? _channel;
 
@@ -21,12 +23,14 @@ public class Worker : BackgroundService
         ILogger<Worker> logger,
         IConfiguration configuration,
         MockStockService stockService,
-        MockShippingService shippingService)
+        MockShippingService shippingService,
+        OrderIntegrationStateStore stateStore)
     {
         _logger = logger;
         _configuration = configuration;
         _stockService = stockService;
         _shippingService = shippingService;
+        _stateStore = stateStore;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -53,20 +57,28 @@ public class Worker : BackgroundService
         {
             var body = ea.Body.ToArray();
             var payload = Encoding.UTF8.GetString(body);
+            OrderCreatedMessage? order = null;
 
             try
             {
                 _logger.LogInformation("Received OrderCreated event: {Payload}", payload);
 
-                var order = JsonSerializer.Deserialize<OrderCreatedMessage>(
+                order = JsonSerializer.Deserialize<OrderCreatedMessage>(
                     payload,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (order is null)
                     throw new Exception("Invalid OrderCreated payload");
 
+                _stateStore.SetReceived(order);
+
                 await _stockService.ReserveStockAsync(order);
-                await _shippingService.CreateShipmentAsync(order);
+                _stateStore.SetStockReserved(order.OrderId);
+
+                var trackingCode = await _shippingService.CreateShipmentAsync(order);
+                _stateStore.SetShipmentCreated(order.OrderId, trackingCode);
+
+                _stateStore.SetCompleted(order.OrderId);
 
                 _channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
 
@@ -77,6 +89,9 @@ public class Worker : BackgroundService
             catch (Exception exception)
             {
                 _logger.LogError(exception, "Failed to process OrderCreated event");
+
+                if (order is not null)
+                    _stateStore.SetFailed(order.OrderId, exception.Message);
 
                 _channel.BasicNack(
                     deliveryTag: ea.DeliveryTag,
