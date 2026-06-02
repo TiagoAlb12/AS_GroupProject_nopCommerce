@@ -90,6 +90,7 @@ public partial class OrderProcessingService : IOrderProcessingService
     protected readonly ShippingSettings _shippingSettings;
     protected readonly TaxSettings _taxSettings;
     protected readonly OrderCreatedRabbitMqPublisher _orderCreatedRabbitMqPublisher;
+    protected readonly IOutboxService _outboxService;
 
     #endregion
 
@@ -143,6 +144,7 @@ public partial class OrderProcessingService : IOrderProcessingService
         RewardPointsSettings rewardPointsSettings,
         ShippingSettings shippingSettings,
         TaxSettings taxSettings,
+        IOutboxService outboxService,
         OrderCreatedRabbitMqPublisher orderCreatedRabbitMqPublisher)
     {
         _currencySettings = currencySettings;
@@ -193,6 +195,7 @@ public partial class OrderProcessingService : IOrderProcessingService
         _rewardPointsSettings = rewardPointsSettings;
         _shippingSettings = shippingSettings;
         _taxSettings = taxSettings;
+        _outboxService = outboxService;
         _orderCreatedRabbitMqPublisher = orderCreatedRabbitMqPublisher;
     }
 
@@ -1612,15 +1615,13 @@ public partial class OrderProcessingService : IOrderProcessingService
                     //publish integration event for external consumers (non-blocking)
                     try
                     {
-                        // Console.WriteLine("DEBUG AS PROJECT: About to publish OrderCreatedEvent to RabbitMQ");
-                        await _logger.WarningAsync("DEBUG AS PROJECT: About to publish OrderCreatedEvent to RabbitMQ");
-
-                        await _orderCreatedRabbitMqPublisher.PublishAsync(new OrderCreatedEvent(order));
+                        // Enqueue integration event to outbox (transactional)
+                        await _logger.WarningAsync("DEBUG AS PROJECT: Enqueuing OrderCreatedEvent to Outbox");
+                        await _outboxService.EnqueueOrderCreatedEventAsync(new OrderCreatedEvent(order));
                     }
                     catch (Exception exception)
                     {
-                        // Console.WriteLine($"DEBUG AS PROJECT: exception while publishing to RabbitMQ: {exception}");
-                        await _logger.WarningAsync($"Failed to publish OrderCreatedEvent to RabbitMQ: {exception}");
+                        await _logger.WarningAsync($"Failed to enqueue OrderCreatedEvent to Outbox: {exception}");
                     }
 
                     //check order status

@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace Nop.Core.Domain.Orders;
 
@@ -7,6 +8,26 @@ namespace Nop.Core.Domain.Orders;
 /// </summary>
 public partial class OrderCreatedEvent
 {
+    /// <summary>
+    /// JSON ctor
+    /// </summary>
+    /// <param name="eventId">Event id</param>
+    /// <param name="eventType">Event type</param>
+    /// <param name="orderId">Order id</param>
+    /// <param name="customerId">Customer id</param>
+    /// <param name="createdAt">Created at UTC</param>
+    /// <param name="total">Order total</param>
+    [JsonConstructor]
+    public OrderCreatedEvent(Guid eventId, string eventType, int orderId, int customerId, DateTime createdAt, decimal total)
+    {
+        EventId = eventId;
+        EventType = eventType;
+        OrderId = orderId;
+        CustomerId = customerId;
+        CreatedAt = createdAt;
+        Total = total;
+    }
+
     /// <summary>
     /// Ctor
     /// </summary>

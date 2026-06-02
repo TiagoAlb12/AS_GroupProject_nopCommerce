@@ -200,6 +200,9 @@ public partial class NopStartup : INopStartup
         // RabbitMQ
         services.AddScoped<IOrderProcessingService, OrderProcessingService>();
         services.AddScoped<OrderCreatedRabbitMqPublisher>();
+        // Outbox service for reliable event persistence
+        services.AddScoped<IOutboxService, OutboxService>();
+        services.AddHostedService<OutboxRelayHostedService>();
 
         services.AddScoped<IOrderTotalCalculationService, OrderTotalCalculationService>();
         services.AddScoped<IReturnRequestService, ReturnRequestService>();
