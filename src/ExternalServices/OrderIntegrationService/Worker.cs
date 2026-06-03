@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using OrderIntegrationService.Models;
 using OrderIntegrationService.Services;
+using OrderIntegrationService.Telemetry;          
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -72,13 +73,8 @@ public class Worker : BackgroundService
 
                 _stateStore.SetReceived(order);
 
-                await _stockService.ReserveStockAsync(order);
-                _stateStore.SetStockReserved(order.OrderId);
-
-                var trackingCode = await _shippingService.CreateShipmentAsync(order);
-                _stateStore.SetShipmentCreated(order.OrderId, trackingCode);
-
-                _stateStore.SetCompleted(order.OrderId);
+                // ── NOVO: processo com métricas e logs estruturados ──────────────
+                await ProcessOrderAsync(order, _logger);
 
                 _channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
 
@@ -108,6 +104,74 @@ public class Worker : BackgroundService
         _logger.LogInformation("Order Integration Service started. Listening queue: {QueueName}", queueName);
 
         return Task.CompletedTask;
+    }
+
+    private async Task ProcessOrderAsync(OrderCreatedMessage order, ILogger logger)
+    {
+        // ── Log estruturado: correlação order_id + event_id (assumindo que OrderCreatedMessage tem EventId e CustomerId)
+        // Se a classe não tiver estas propriedades, ajuste ou comente. O código original usava OrderCreatedMessage.
+        using var scope = logger.BeginScope(new Dictionary<string, object>
+        {
+            ["order_id"]  = order.OrderId,
+            ["event_id"]  = order.EventId,         // Adicione esta propriedade à classe OrderCreatedMessage se não existir
+            ["customer_id"] = order.CustomerId     // Adicione esta propriedade se necessário
+        });
+
+        logger.LogInformation(
+            "Processing OrderCreated event. order_id={OrderId} event_id={EventId} total={Total}",
+            order.OrderId, order.EventId, order.Total);
+
+        // ── Métrica: mensagem consumida (Vis 1 do lado do consumidor) ─────────────
+        OrderIntegrationMetrics.MessagesConsumed.Add(1,
+            new KeyValuePair<string, object?>("queue", "order.created"));
+
+        try
+        {
+            // ── Stock ─────────────────────────────────────────────────────────────
+            logger.LogInformation(
+                "Reserving stock. order_id={OrderId} event_id={EventId}",
+                order.OrderId, order.EventId);
+
+            // O método original é ReserveStockAsync, não ReserveAsync.
+            // Mantemos a chamada original.
+            await _stockService.ReserveStockAsync(order);
+            _stateStore.SetStockReserved(order.OrderId);
+
+            OrderIntegrationMetrics.StockReserved.Add(1);
+            logger.LogInformation(
+                "Stock reserved. order_id={OrderId} event_id={EventId}",
+                order.OrderId, order.EventId);
+
+            // ── Shipping ──────────────────────────────────────────────────────────
+            logger.LogInformation(
+                "Creating shipment. order_id={OrderId} event_id={EventId}",
+                order.OrderId, order.EventId);
+
+            var trackingCode = await _shippingService.CreateShipmentAsync(order);
+            _stateStore.SetShipmentCreated(order.OrderId, trackingCode);
+
+            OrderIntegrationMetrics.ShipmentCreated.Add(1);
+            logger.LogInformation(
+                "Shipment created. order_id={OrderId} event_id={EventId} tracking={TrackingCode}",
+                order.OrderId, order.EventId, trackingCode);
+
+            _stateStore.SetCompleted(order.OrderId);
+
+            logger.LogInformation(
+                "Order processing completed. order_id={OrderId} event_id={EventId}",
+                order.OrderId, order.EventId);
+        }
+        catch (Exception ex)
+        {
+            OrderIntegrationMetrics.MessagesProcessingFailed.Add(1,
+                new KeyValuePair<string, object?>("queue", "order.created"));
+
+            logger.LogError(ex,
+                "Order processing failed — will be sent to DLQ. order_id={OrderId} event_id={EventId}",
+                order.OrderId, order.EventId);
+
+            throw; // mantém o comportamento original: a exceção é relançada para o catch externo fazer NACK
+        }
     }
 
     public override void Dispose()

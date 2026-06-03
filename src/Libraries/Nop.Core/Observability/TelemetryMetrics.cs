@@ -37,5 +37,15 @@ namespace Nop.Core.Telemetry
         public static readonly Counter<int> SearchErrors =
             Meter.CreateCounter<int>("nopcommerce_search_errors_total",
                 description: "Total number of search errors");
+
+        public static readonly Counter<long> OrderEventsPublished =
+            Meter.CreateCounter<long>(
+                "nopcommerce_order_events_published_total",
+                description: "Total number of OrderCreated events published to RabbitMQ");
+
+        public static readonly Counter<long> OrderEventsPublishFailed =
+            Meter.CreateCounter<long>(
+                "nopcommerce_order_events_publish_failed_total",
+                description: "Total number of OrderCreated events that failed to publish to RabbitMQ");
     }
 }

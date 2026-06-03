@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Nop.Core.Domain.Orders;
+using Nop.Core.Telemetry;
 using Nop.Services.Logging;
 using RabbitMQ.Client;
 
@@ -13,12 +15,17 @@ namespace Nop.Services.Orders;
 public class OrderCreatedRabbitMqPublisher
 {
     protected readonly IConfiguration _configuration;
-    protected readonly ILogger _logger;
+    protected readonly Nop.Services.Logging.ILogger _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger<OrderCreatedRabbitMqPublisher> _dotnetLogger;
 
-    public OrderCreatedRabbitMqPublisher(IConfiguration configuration, ILogger logger)
+    public OrderCreatedRabbitMqPublisher(
+        IConfiguration configuration,
+        Nop.Services.Logging.ILogger logger,
+        Microsoft.Extensions.Logging.ILogger<OrderCreatedRabbitMqPublisher> dotnetLogger)
     {
         _configuration = configuration;
         _logger = logger;
+        _dotnetLogger = dotnetLogger;
     }
 
     public async Task PublishAsync(OrderCreatedEvent eventMessage)
@@ -64,6 +71,11 @@ public class OrderCreatedRabbitMqPublisher
             properties.MessageId = eventMessage.EventId.ToString();
             properties.Type = eventMessage.EventType;
 
+            _dotnetLogger.LogInformation(
+                "Publishing OrderCreated event to RabbitMQ. order_id={OrderId} event_id={EventId}",
+                eventMessage.OrderId,
+                eventMessage.EventId);
+
             channel.BasicPublish(
                 exchange: "nopcommerce.order.events",
                 routingKey: "order.created",
@@ -74,11 +86,23 @@ public class OrderCreatedRabbitMqPublisher
             if (!channel.WaitForConfirms(TimeSpan.FromSeconds(5)))
                 throw new Exception("RabbitMQ did not confirm message publish");
 
+            TelemetryMetrics.OrderEventsPublished.Add(1);
+
             await _logger.InformationAsync("OrderCreatedEvent published to RabbitMQ");
+            _dotnetLogger.LogInformation(
+                "OrderCreated event published to RabbitMQ. order_id={OrderId} event_id={EventId}",
+                eventMessage.OrderId,
+                eventMessage.EventId);
         }
         catch (Exception exception)
         {
+            TelemetryMetrics.OrderEventsPublishFailed.Add(1);
             await _logger.ErrorAsync("Failed to publish OrderCreatedEvent to RabbitMQ", exception);
+            _dotnetLogger.LogError(
+                exception,
+                "Failed to publish OrderCreated event to RabbitMQ. order_id={OrderId} event_id={EventId}",
+                eventMessage.OrderId,
+                eventMessage.EventId);
             throw;
         }
     }

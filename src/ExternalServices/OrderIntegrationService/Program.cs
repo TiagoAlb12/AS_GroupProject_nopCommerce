@@ -1,14 +1,59 @@
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OrderIntegrationService;
 using OrderIntegrationService.Services;
+using OrderIntegrationService.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddOpenTelemetry(options =>
+{
+    options.SetResourceBuilder(ResourceBuilder.CreateDefault()
+        .AddService("order-integration-service"));
+
+    options.AddOtlpExporter(otlpOptions =>
+    {
+        otlpOptions.Endpoint = new Uri("http://telemetry_service:4318/v1/logs");
+        otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+    });
+
+    options.AddConsoleExporter();
+    options.IncludeFormattedMessage = true;
+    options.IncludeScopes = true;
+});
+
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics
+        .AddMeter(OrderIntegrationMetrics.MeterName)
+        .AddOtlpExporter(otlpOptions =>
+        {
+            otlpOptions.Endpoint = new Uri("http://telemetry_service:4317");
+            otlpOptions.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+        })
+        .AddConsoleExporter());
+
+builder.Services.AddHttpClient();
 
 builder.Services.AddSingleton<OrderIntegrationStateStore>();
 builder.Services.AddSingleton<MockStockService>();
 builder.Services.AddSingleton<MockShippingService>();
+builder.Services.AddSingleton(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var queueName = configuration["RabbitMQ:QueueName"] ?? "nopcommerce.order.created";
+    var dlqName = configuration["RabbitMQ:DeadLetterQueueName"] ?? "nopcommerce.order.created.dlq";
+    return new QueueMetricsState(queueName, dlqName);
+});
+builder.Services.AddHostedService<RabbitMqQueueMetricsHostedService>();
 builder.Services.AddHostedService<Worker>();
 
 var app = builder.Build();
+
+OrderIntegrationMetrics.RegisterQueueMetrics(
+    app.Services.GetRequiredService<QueueMetricsState>());
 
 app.MapGet("/", () => Results.Ok("Order Integration Service running"));
 
