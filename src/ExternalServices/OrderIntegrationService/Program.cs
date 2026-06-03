@@ -4,9 +4,17 @@ using OpenTelemetry.Resources;
 using OrderIntegrationService;
 using OrderIntegrationService.Services;
 using OrderIntegrationService.Telemetry;
+using Microsoft.EntityFrameworkCore;
+using OrderIntegrationService.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString =
+    builder.Configuration.GetConnectionString("OrderIntegrationDb")
+    ?? "Data Source=/app/data/order-integration.db";
+
+builder.Services.AddDbContextFactory<OrderIntegrationDbContext>(options =>
+    options.UseSqlite(connectionString));
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddOpenTelemetry(options =>
@@ -51,6 +59,13 @@ builder.Services.AddHostedService<RabbitMqQueueMetricsHostedService>();
 builder.Services.AddHostedService<Worker>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<OrderIntegrationDbContext>>();
+    using var db = dbFactory.CreateDbContext();
+    db.Database.EnsureCreated();
+}
 
 OrderIntegrationMetrics.RegisterQueueMetrics(
     app.Services.GetRequiredService<QueueMetricsState>());

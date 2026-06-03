@@ -1,37 +1,66 @@
-using System.Collections.Concurrent;
+using Microsoft.EntityFrameworkCore;
+using OrderIntegrationService.Data;
 using OrderIntegrationService.Models;
 
 namespace OrderIntegrationService.Services;
 
 public class OrderIntegrationStateStore
 {
-    private readonly ConcurrentDictionary<int, OrderIntegrationStatus> _statuses = new();
+    private readonly IDbContextFactory<OrderIntegrationDbContext> _dbContextFactory;
+
+    public OrderIntegrationStateStore(IDbContextFactory<OrderIntegrationDbContext> dbContextFactory)
+    {
+        _dbContextFactory = dbContextFactory;
+    }
 
     public IEnumerable<OrderIntegrationStatus> GetAll()
     {
-        return _statuses.Values.OrderByDescending(s => s.LastUpdatedAt);
+        using var db = _dbContextFactory.CreateDbContext();
+
+        return db.OrderIntegrationStatuses
+            .AsNoTracking()
+            .OrderByDescending(s => s.LastUpdatedAt)
+            .ToList();
     }
 
     public OrderIntegrationStatus? Get(int orderId)
     {
-        _statuses.TryGetValue(orderId, out var status);
-        return status;
+        using var db = _dbContextFactory.CreateDbContext();
+
+        return db.OrderIntegrationStatuses
+            .AsNoTracking()
+            .FirstOrDefault(s => s.OrderId == orderId);
     }
 
     public void SetReceived(OrderCreatedMessage order)
     {
-        _statuses[order.OrderId] = new OrderIntegrationStatus
+        using var db = _dbContextFactory.CreateDbContext();
+
+        var status = db.OrderIntegrationStatuses
+            .FirstOrDefault(s => s.OrderId == order.OrderId);
+
+        if (status is null)
         {
-            OrderId = order.OrderId,
-            EventId = order.EventId,
-            CustomerId = order.CustomerId,
-            Total = order.Total,
-            CreatedAt = order.CreatedAt,
-            IntegrationStatus = "Received",
-            StockStatus = "Pending",
-            ShippingStatus = "Pending",
-            LastUpdatedAt = DateTime.UtcNow
-        };
+            status = new OrderIntegrationStatus
+            {
+                OrderId = order.OrderId
+            };
+
+            db.OrderIntegrationStatuses.Add(status);
+        }
+
+        status.EventId = order.EventId;
+        status.CustomerId = order.CustomerId;
+        status.Total = order.Total;
+        status.CreatedAt = order.CreatedAt;
+        status.IntegrationStatus = "Received";
+        status.StockStatus = "Pending";
+        status.ShippingStatus = "Pending";
+        status.TrackingCode = null;
+        status.ErrorMessage = null;
+        status.LastUpdatedAt = DateTime.UtcNow;
+
+        db.SaveChanges();
     }
 
     public void SetStockReserved(int orderId)
@@ -73,10 +102,17 @@ public class OrderIntegrationStateStore
 
     private void Update(int orderId, Action<OrderIntegrationStatus> update)
     {
-        if (!_statuses.TryGetValue(orderId, out var status))
+        using var db = _dbContextFactory.CreateDbContext();
+
+        var status = db.OrderIntegrationStatuses
+            .FirstOrDefault(s => s.OrderId == orderId);
+
+        if (status is null)
             return;
 
         update(status);
         status.LastUpdatedAt = DateTime.UtcNow;
+
+        db.SaveChanges();
     }
 }

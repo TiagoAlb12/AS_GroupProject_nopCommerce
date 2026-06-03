@@ -114,6 +114,8 @@ services:
         condition: service_healthy
     ports:
       - "8081:8080"
+    volumes:
+      - order_integration_data:/app/data
     environment:
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Port: 5672
@@ -121,6 +123,7 @@ services:
       RabbitMQ__UserName: nopcommerce
       RabbitMQ__Password: nopCommerce_rabbit_password
       RabbitMQ__QueueName: nopcommerce.order.created
+      ConnectionStrings__OrderIntegrationDb: "Data Source=/app/data/order-integration.db"
 
 volumes:
   nopcommerce_data:
@@ -128,3 +131,4 @@ volumes:
   grafana_data:
   loki_data:
   rabbitmq_data:
+  order_integration_data:
